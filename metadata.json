@@ -1,0 +1,6 @@
+{
+  "name": "Overture",
+  "description": "Voice-first pre-visit intake: your conversation is charted to FHIR as it happens, with live insurance cost answers.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
