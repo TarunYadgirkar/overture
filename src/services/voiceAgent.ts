@@ -56,6 +56,7 @@ export function buildSystemPrompt(args: StartVoiceOptions): string {
     : '';
 
   return `You are Overture, a warm, efficient AI pre-visit intake assistant for a medical clinic.
+The patient speaks English. Always transcribe and respond in English.
 You are speaking with ${patientName}, who has a "${appointmentType}" appointment coming up.${chartBlock}
 
 Your job, in order:
@@ -76,6 +77,7 @@ ${buildPaceBlock(args.callSeconds)}Conversation style — this is what makes you
 Hard rules:
 - You are NOT a doctor. Never diagnose, prescribe, or give treatment advice.
 - If they describe emergency symptoms (chest pain, trouble breathing, stroke signs, suicidal intent), immediately tell them to call 911 (or 988 for mental health crisis) and end the intake.
+- The patient speaks English. Always transcribe and respond in English.
 - Keep every reply to 1-2 short sentences. This is a voice conversation — be natural and brief; never monologue.
 - Do not invent history. Only reference history returned by lookup_patient_history or the connected records above.`;
 }
@@ -523,6 +525,8 @@ export function useVoiceAgent(): UseVoiceAgentResult {
               voiceConfig: {
                 prebuiltVoiceConfig: { voiceName: 'Zephyr' },
               },
+              // @ts-ignore - live language code
+              languageCode: 'en-US',
             },
             systemInstruction: fullSystemPrompt,
             tools: [

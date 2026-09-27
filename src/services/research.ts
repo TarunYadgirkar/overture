@@ -1,6 +1,6 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { Type } from '@google/genai';
 import { CareLevel, CoverageSummary, ResearchResult, CareOption } from '../types';
-import { getApiKey, hasKey } from './gemini';
+import { getApiKey, hasKey, generateJson } from './gemini';
 
 export interface ResearchParams {
   chiefConcern: string;
@@ -129,76 +129,58 @@ Return a JSON object with exactly this structure: { patient_explainer: string (3
     prompt += `\n\nInsurance coverage:\nPayer: ${params.coverage.payer}\nPlan status: ${params.coverage.plan_status}\nCopay: ${params.coverage.copay ?? 'None'}\nDeductible remaining: ${params.coverage.deductible_remaining ?? 'None'}\nVisit estimate: $${params.coverage.estimated_visit_cost.min}–$${params.coverage.estimated_visit_cost.max}`;
   }
 
-  try {
-    const ai = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
+  const researchSchema = {
+    type: Type.OBJECT,
+    properties: {
+      patient_explainer: { type: Type.STRING },
+      provider_considerations: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
       },
-    });
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: prompt,
-      config: {
-        systemInstruction,
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseSchema: {
+      red_flags_to_watch: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
+      care_options: {
+        type: Type.ARRAY,
+        items: {
           type: Type.OBJECT,
           properties: {
-            patient_explainer: { type: Type.STRING },
-            provider_considerations: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
+            level: {
+              type: Type.STRING,
+              enum: ['self_monitor', 'telehealth', 'primary_care', 'urgent_care', 'emergency_room'],
             },
-            red_flags_to_watch: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
+            fit: {
+              type: Type.STRING,
+              enum: ['low', 'medium', 'high'],
             },
-            care_options: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  level: {
-                    type: Type.STRING,
-                    enum: ['self_monitor', 'telehealth', 'primary_care', 'urgent_care', 'emergency_room'],
-                  },
-                  fit: {
-                    type: Type.STRING,
-                    enum: ['low', 'medium', 'high'],
-                  },
-                  why: { type: Type.STRING },
-                  est_cost: { type: Type.STRING },
-                },
-                required: ['level', 'fit', 'why', 'est_cost'],
-              },
-            },
-            questions_to_ask: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
+            why: { type: Type.STRING },
+            est_cost: { type: Type.STRING },
           },
-          required: [
-            'patient_explainer',
-            'provider_considerations',
-            'red_flags_to_watch',
-            'care_options',
-            'questions_to_ask',
-          ],
+          required: ['level', 'fit', 'why', 'est_cost'],
         },
       },
+      questions_to_ask: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
+    },
+    required: [
+      'patient_explainer',
+      'provider_considerations',
+      'red_flags_to_watch',
+      'care_options',
+      'questions_to_ask',
+    ],
+  };
+
+  try {
+    const parsed = await generateJson<ResearchResult>({
+      contents: prompt,
+      systemInstruction,
+      temperature: 0.2,
+      responseSchema: researchSchema,
     });
-
-    const text = response.text?.trim();
-    if (!text) {
-      return buildDeterministicFallbackResearch(params);
-    }
-
-    const parsed = JSON.parse(text) as ResearchResult;
 
     // Validate structure
     if (

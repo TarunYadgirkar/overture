@@ -4,7 +4,6 @@ export const CARRIERS: Carrier[] = [
   {
     key: 'UHC',
     name: 'UnitedHealthcare',
-    stediPayerKey: 'UHC',
     plans: [
       {
         id: 'uhc-choice-plus',
@@ -32,7 +31,6 @@ export const CARRIERS: Carrier[] = [
   {
     key: 'CIGNA',
     name: 'Cigna',
-    stediPayerKey: 'CIGNA',
     plans: [
       {
         id: 'cigna-open-access-plus',
@@ -60,7 +58,6 @@ export const CARRIERS: Carrier[] = [
   {
     key: 'AETNA',
     name: 'Aetna',
-    stediPayerKey: 'AETNA',
     plans: [
       {
         id: 'aetna-open-choice-ppo',
@@ -128,7 +125,6 @@ export const CARRIERS: Carrier[] = [
   {
     key: 'MEDICARE',
     name: 'Medicare',
-    stediPayerKey: 'CMS',
     plans: [
       {
         id: 'medicare-part-b',

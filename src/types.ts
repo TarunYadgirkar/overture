@@ -26,7 +26,7 @@ export interface CareRecommendation {
 }
 
 export interface CoverageSummary {
-  source: 'stedi' | 'synthetic';
+  source: 'live' | 'synthetic';
   payer: string;
   plan_status: string;
   copay?: number | null;
@@ -194,7 +194,6 @@ export interface HistoryDoc {
 
 // Insurance plans catalog
 export type CarrierKey = 'UHC' | 'CIGNA' | 'AETNA' | 'BCBS' | 'KAISER' | 'MEDICARE' | 'MEDICAID';
-export type StediPayerKey = 'UHC' | 'CIGNA' | 'AETNA' | 'CMS';
 
 export interface PlanCopays {
   telehealth: number | null;
@@ -214,7 +213,6 @@ export interface InsurancePlanOption {
 export interface Carrier {
   key: CarrierKey;
   name: string;
-  stediPayerKey?: StediPayerKey;
   plans: InsurancePlanOption[];
 }
 

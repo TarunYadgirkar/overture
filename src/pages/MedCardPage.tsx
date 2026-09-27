@@ -15,11 +15,11 @@ import {
   ShieldAlert,
   Sparkles,
 } from 'lucide-react';
-import { GoogleGenAI, Type } from '@google/genai';
+import { Type } from '@google/genai';
 import { Nav, Btn, Spinner } from '../components/primitives';
 import { ConnectRecordsModal } from '../components/ConnectRecordsModal';
 import { MedCardData, TrialMatch, ScanLabelResult } from '../types';
-import { getApiKey, hasKey } from '../services/gemini';
+import { getApiKey, hasKey, generateJson } from '../services/gemini';
 
 export function MedCardPage() {
   const [card, setCard] = useState<MedCardData>({
@@ -180,12 +180,6 @@ export function MedCardPage() {
       const reader = new FileReader();
       reader.onload = async () => {
         const base64Data = (reader.result as string).split(',')[1];
-        const apiKey = getApiKey();
-
-        const ai = new GoogleGenAI({
-          apiKey,
-          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-        });
 
         const imagePart = {
           inlineData: {
@@ -194,38 +188,34 @@ export function MedCardPage() {
           },
         };
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: {
-            parts: [
-              imagePart,
-              {
-                text: 'Read this medication label.',
-              },
-            ],
-          },
-          config: {
-            systemInstruction: `You are a pill bottle label reader. Extract medication name, dosage, and frequency/instructions from the image. Return JSON: {"medicationName": string, "dosage": string, "frequency": string, "confidence": "low"|"medium"|"high"}. If the image is unreadable or not a medication label, set medicationName to "" and confidence to "low".`,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                medicationName: { type: Type.STRING },
-                dosage: { type: Type.STRING },
-                frequency: { type: Type.STRING },
-                confidence: {
-                  type: Type.STRING,
-                  enum: ['low', 'medium', 'high'],
-                },
-              },
-              required: ['medicationName', 'dosage', 'frequency', 'confidence'],
+        const scanSchema = {
+          type: Type.OBJECT,
+          properties: {
+            medicationName: { type: Type.STRING },
+            dosage: { type: Type.STRING },
+            frequency: { type: Type.STRING },
+            confidence: {
+              type: Type.STRING,
+              enum: ['low', 'medium', 'high'],
             },
           },
-        });
+          required: ['medicationName', 'dosage', 'frequency', 'confidence'],
+        };
 
-        const text = response.text?.trim();
-        if (text) {
-          const parsed = JSON.parse(text) as ScanLabelResult;
+        try {
+          const parsed = await generateJson<ScanLabelResult>({
+            contents: {
+              parts: [
+                imagePart,
+                {
+                  text: 'Read this medication label.',
+                },
+              ],
+            },
+            systemInstruction: `You are a pill bottle label reader. Extract medication name, dosage, and frequency/instructions from the image. Return JSON: {"medicationName": string, "dosage": string, "frequency": string, "confidence": "low"|"medium"|"high"}. If the image is unreadable or not a medication label, set medicationName to "" and confidence to "low".`,
+            responseSchema: scanSchema,
+          });
+
           setScanResult(parsed);
 
           if (parsed.confidence === 'high' && parsed.medicationName) {
@@ -242,7 +232,7 @@ export function MedCardPage() {
             setScanEditFreq(parsed.frequency || '');
             setScanState('confirm');
           }
-        } else {
+        } catch {
           setScanState('error');
         }
       };
@@ -356,41 +346,39 @@ export function MedCardPage() {
     }
 
     try {
-      const apiKey = getApiKey();
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-      });
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: voiceTranscript,
-        config: {
-          systemInstruction: `You extract medications from a patient's spoken or typed description. The text may mention several medications. Return JSON: {"medications": [{"medicationName": string, "dosage": string, "frequency": string, "confidence": "low"|"medium"|"high"}]}. Use "" for any dosage or frequency the patient did not state. Confidence reflects how clearly the medication was named. If no medications are mentioned, return {"medications": []}. Never invent medications not present in the text.`,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              medications: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    medicationName: { type: Type.STRING },
-                    dosage: { type: Type.STRING },
-                    frequency: { type: Type.STRING },
-                    confidence: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
-                  },
-                  required: ['medicationName', 'dosage', 'frequency', 'confidence'],
-                },
+      const medSchema = {
+        type: Type.OBJECT,
+        properties: {
+          medications: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                medicationName: { type: Type.STRING },
+                dosage: { type: Type.STRING },
+                frequency: { type: Type.STRING },
+                confidence: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
               },
+              required: ['medicationName', 'dosage', 'frequency', 'confidence'],
             },
-            required: ['medications'],
           },
         },
+        required: ['medications'],
+      };
+
+      const parsed = await generateJson<{
+        medications: Array<{
+          medicationName: string;
+          dosage: string;
+          frequency: string;
+          confidence: 'low' | 'medium' | 'high';
+        }>;
+      }>({
+        contents: voiceTranscript,
+        systemInstruction: `You extract medications from a patient's spoken or typed description. The text may mention several medications. Return JSON: {"medications": [{"medicationName": string, "dosage": string, "frequency": string, "confidence": "low"|"medium"|"high"}]}. Use "" for any dosage or frequency the patient did not state. Confidence reflects how clearly the medication was named. If no medications are mentioned, return {"medications": []}. Never invent medications not present in the text.`,
+        responseSchema: medSchema,
       });
 
-      const parsed = JSON.parse(response.text || '{"medications":[]}');
       setExtractedMeds(parsed.medications || []);
       setVoiceState('confirm');
     } catch {
@@ -472,40 +460,37 @@ export function MedCardPage() {
     }
 
     try {
-      const apiKey = getApiKey();
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-      });
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: context,
-        config: {
-          systemInstruction: `You match a patient's medication/condition profile to types of clinical trials they MAY be eligible for on ClinicalTrials.gov. Given medications, conditions, and allergies, suggest 2-3 trial categories. Return JSON: {"trials": [{"title": string (max 90 chars), "condition_match": string, "why_eligible": string}]}. RULES: Only suggest categories clearly supported by the given profile. If nothing matches, return {"trials": []}. Never promise eligibility — phrase as "may be eligible". condition_match must be a real, searchable condition name.`,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              trials: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING },
-                    condition_match: { type: Type.STRING },
-                    why_eligible: { type: Type.STRING },
-                  },
-                  required: ['title', 'condition_match', 'why_eligible'],
-                },
+      const trialsSchema = {
+        type: Type.OBJECT,
+        properties: {
+          trials: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                condition_match: { type: Type.STRING },
+                why_eligible: { type: Type.STRING },
               },
+              required: ['title', 'condition_match', 'why_eligible'],
             },
-            required: ['trials'],
           },
         },
+        required: ['trials'],
+      };
+
+      const parsed = await generateJson<{
+        trials: Array<{
+          title: string;
+          condition_match: string;
+          why_eligible: string;
+        }>;
+      }>({
+        contents: context,
+        systemInstruction: `You match a patient's medication/condition profile to types of clinical trials they MAY be eligible for on ClinicalTrials.gov. Given medications, conditions, and allergies, suggest 2-3 trial categories. Return JSON: {"trials": [{"title": string (max 90 chars), "condition_match": string, "why_eligible": string}]}. RULES: Only suggest categories clearly supported by the given profile. If nothing matches, return {"trials": []}. Never promise eligibility — phrase as "may be eligible". condition_match must be a real, searchable condition name.`,
+        responseSchema: trialsSchema,
       });
 
-      const parsed = JSON.parse(response.text || '{"trials":[]}');
       const formatted = (parsed.trials || []).map((t: any) => ({
         ...t,
         search_url: `https://clinicaltrials.gov/search?cond=${encodeURIComponent(t.condition_match)}`,
